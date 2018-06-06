@@ -1,0 +1,251 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content="zhanglu"><title>Hadoop完全分布式搭建 | 鹭岛</title><link rel="stylesheet" type="text/css" href="//fonts.neworld.org/css?family=Source+Code+Pro"><link rel="stylesheet" type="text/css" href="/css/style.css?v=2.0.1"><link rel="stylesheet" type="text/css" href="/css/hi.css?v=2.0.1"><link rel="stylesheet" type="text/css" href="/css/highlight.css?v=2.0.1"><link rel="Shortcut Icon" href="/favicon.ico"><link rel="bookmark" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">Hadoop完全分布式搭建</h1><a id="logo" href="/.">鹭岛</a><p class="description">my zone,my rule</p></div><div id="nav-menu"><a href="/." class="current"><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div><div id="search-form"><div id="result-mask" class="hide"></div><label><input id="search-key" type="text" autocomplete="off" placeholder="Arama"></label><div id="result-wrap" class="hide"><div id="search-result"></div></div><div class="hide"><template id="search-tpl"><div class="item"><a href="/{path}" title="{title}"><div class="title">{title}</div><div class="time">{date}</div><div class="tags">{tags}</div></a></div></template></div></div></div><div id="layout" class="layout-g"><div class="layout-l"><div class="content_container"><div class="post"><h1 class="post-title">Hadoop完全分布式搭建</h1><div class="post-meta"><a href="/2018/06/06/Hadoop完全分布式搭建/#comments" class="comment-count"></a><p><span class="date">Jun 06, 2018</span><span><i id="busuanzi_container_page_pv"><i id="busuanzi_value_page_pv"></i><i>点击</i></i></span></p></div><div class="post-content"><h2 id="集群规划-gt-不同的守护进程运行哪些节点"><a href="#集群规划-gt-不同的守护进程运行哪些节点" class="headerlink" title="集群规划  -&gt; 不同的守护进程运行哪些节点"></a>集群规划  -&gt; 不同的守护进程运行哪些节点</h2><pre><code>        linux01               linux02              linux03    
+
+HDFS      Namenode          SecondaryNamenode       Datanode
+        Datanode          Datanode                
+
+Yarn    Nodemanager        Nodemanager           Nodemanager
+                                                                                                             RecourceManager
+
+Histrory  HistroryServer                                
+</code></pre><h2 id="一、基本环境准备"><a href="#一、基本环境准备" class="headerlink" title="一、基本环境准备"></a>一、基本环境准备</h2><pre><code>CentOS 6.5    hadoop 2.7.6      jdk1.8
+</code></pre><h3 id="1-配置IP和DNS-映射-主机名"><a href="#1-配置IP和DNS-映射-主机名" class="headerlink" title="1 配置IP和DNS 映射  主机名"></a>1 配置IP和DNS 映射  主机名</h3><pre><code>//检查主机名
+$ cat /etc/sysconfig/network
+
+//检查IP 和DNS 网关 配置静态IP
+$ cat /etc/sysconfig/network-scripts/ifcfg-eth0
+
+//检查主机映射
+$ cat /etc/hosts   -&gt;Linux
+C:\Windows\System32\drivers\etc\hosts   -&gt;Windows
+</code></pre><h3 id="2-关闭防火墙及安全子系统"><a href="#2-关闭防火墙及安全子系统" class="headerlink" title="2 关闭防火墙及安全子系统"></a>2 关闭防火墙及安全子系统</h3><pre><code># service iptables stop
+# chkconfig iptables off
+
+检查：
+# service iptables status
+会有提示iptables: Firewall is not running.
+
+# chkconfig --list | grep iptables
+0:off    1:off    2:off    3:off    4:off    5:off    6:off
+
+关闭Linux安全子系统
+# vi /etc/sysconfig/selinux 
+
+为了提高性能，可以考虑将启动方式调整为不带桌面
+sudo vi /etc/inittab
+id:3:initdefault:
+</code></pre><h3 id="3-创建普通用户名并密码-配置sudo权限"><a href="#3-创建普通用户名并密码-配置sudo权限" class="headerlink" title="3 创建普通用户名并密码, 配置sudo权限"></a>3 创建普通用户名并密码, 配置sudo权限</h3><h4 id="1-查看是否存在用户普通用户-没有就创建-稍后要保证3台帐号密码相同"><a href="#1-查看是否存在用户普通用户-没有就创建-稍后要保证3台帐号密码相同" class="headerlink" title="1 查看是否存在用户普通用户,没有就创建,稍后要保证3台帐号密码相同"></a>1 查看是否存在用户普通用户,没有就创建,稍后要保证3台帐号密码相同</h4><pre><code># useradd hadoop
+# passwd hadoop         或 # echo 123456 | passwd --stdin hadoop
+</code></pre><h4 id="2-配置hadoop的sudo权限"><a href="#2-配置hadoop的sudo权限" class="headerlink" title="2 配置hadoop的sudo权限"></a>2 配置hadoop的sudo权限</h4><h3 id="4-安装jdk"><a href="#4-安装jdk" class="headerlink" title="4 安装jdk"></a>4 安装jdk</h3><h4 id="1-卸载自带jdk"><a href="#1-卸载自带jdk" class="headerlink" title="1 卸载自带jdk"></a>1 卸载自带jdk</h4><pre><code># rpm -qa | grep jdk
+# rpm -e --nodeps java-1.6.0-openjdk-1.6.0.0-1.50.1.11.5.el6_3.x86_64
+# rpm -e --nodeps java-1.7.0-openjdk-1.7.0.9-2.3.4.1.el6_3.x86_64
+</code></pre><h4 id="2-在-opt下创建并修改权限"><a href="#2-在-opt下创建并修改权限" class="headerlink" title="2 在/opt下创建并修改权限"></a>2 在/opt下创建并修改权限</h4><pre><code>modules/
+software/
+#  mkdir /opt/modules /opt/software
+# chmod -R 777 modules/ software/
+</code></pre><h4 id="3-安装jdk"><a href="#3-安装jdk" class="headerlink" title="3 安装jdk"></a>3 安装jdk</h4><pre><code>解压jdk到modules
+# tar -zxvf /home/hadoop/jdk-7u67-linux-x64.tar.gz -C  /opt/modules/
+配置Java环境变量
+# vi /etc/profile  #添加以下内容
+#JAVA_HOME
+export JAVA_HOME=/opt/modules/jdk1.7.0_67
+export PATH=$PATH:$JAVA_HOME/bin
+
+生效配置
+# source /etc/profile
+
+检查Java环境变量
+# java -version
+</code></pre><h3 id="5-系统和软件【3台】如果时克隆出来的需要执行"><a href="#5-系统和软件【3台】如果时克隆出来的需要执行" class="headerlink" title="5 系统和软件【3台】如果时克隆出来的需要执行"></a>5 系统和软件【3台】如果时克隆出来的需要执行</h3><pre><code># vi /etc/udev/rules.d/70-persistent-net.rules
+删除克隆来的信息(也就是eth0)
+并把eth1改为eth0
+
+
+# vi /etc/sysconfig/network-scripts/ifcfg-eth0　
+删除UUID
+修改HWADDR=当前的mac地址(与70-persistent-net.rules的mac地址相同)
+</code></pre><p>  修改IPADDR为对应的ip</p>
+<h3 id="6-配置主机映射-【三台都需要需要添加】"><a href="#6-配置主机映射-【三台都需要需要添加】" class="headerlink" title="6 配置主机映射   【三台都需要需要添加】"></a>6 配置主机映射   【三台都需要需要添加】</h3><pre><code># vi /etc/hosts
+     192.168.239.211 bigdata01.hadoop.com
+</code></pre><p>192.168.239.212 bigdata02.hadoop.com<br>192.168.239.213 bigdata03.hadoop.com</p>
+<h3 id="7-修改主机名"><a href="#7-修改主机名" class="headerlink" title="7.修改主机名"></a>7.修改主机名</h3><p>修改每台主机的主机名为对应的名字<br>重启</p>
+<h3 id="8-windows的映射-C-Windows-System32-drivers-etc-hosts"><a href="#8-windows的映射-C-Windows-System32-drivers-etc-hosts" class="headerlink" title="8.windows的映射 (C:\Windows\System32\drivers\etc\hosts)"></a>8.windows的映射 (C:\Windows\System32\drivers\etc\hosts)</h3><pre><code>192.168.239.211 bigdata01.hadoop.com
+</code></pre><p>192.168.239.212 bigdata02.hadoop.com<br>192.168.239.213 bigdata03.hadoop.com</p>
+<p>##　二、配置NTP服务</p>
+<pre><code>*.把linux01作为整个集群的时间同步服务器
+*.集群中所有其他服务器都来这台服务器linux01同步时间
+</code></pre><h3 id="1-检查每台服务器所在的时区"><a href="#1-检查每台服务器所在的时区" class="headerlink" title="1.检查每台服务器所在的时区"></a>1.检查每台服务器所在的时区</h3><pre><code> $ date -R
+Thu, 23 Mar 2017 11:13:57 +0800
+
+如果不是+0800,如要通过如下命令调整
+# rm  -rf /etc/localtime        ---如果时区不是+0800
+# ln -s /usr/share/zoneinfo/Asia/Shanghai   /etc/localtime
+</code></pre><h3 id="2-安装ntp服务"><a href="#2-安装ntp服务" class="headerlink" title="2.安装ntp服务"></a>2.安装ntp服务</h3><pre><code># rpm -qa | grep ntp      --查看ntp软件包是否已安装
+ntp-4.2.6p5-1.el6.centos.x86_64
+ntpdate-4.2.6p5-1.el6.centos.x86_64
+如果没有以上两个,执行命令: yum  -y install ntp    (安装ntp)
+</code></pre><h3 id="3-修改ntp的配置文件（linux01-bigdata-com为第一台服务器的主机名-修改第一台）"><a href="#3-修改ntp的配置文件（linux01-bigdata-com为第一台服务器的主机名-修改第一台）" class="headerlink" title="3.修改ntp的配置文件（linux01.bigdata.com为第一台服务器的主机名,修改第一台）"></a>3.修改ntp的配置文件（linux01.bigdata.com为第一台服务器的主机名,修改第一台）</h3><pre><code># vi /etc/ntp.conf
+去掉第18行的# 修改成自己的网段
+restrict 192.168.239.0 mask 255.255.255.0 nomodify notrap
+注释掉以下几行（22行）
+   #server 0.centos.pool.ntp.org iburst
+   #server 1.centos.pool.ntp.org iburst
+   #server 2.centos.pool.ntp.org iburst
+   #server 3.centos.pool.ntp.org iburst
+
+ CentsOS6.4 去掉第35 36行的注释
+ CentsOS6.5 36行去手动添加以下内容
+    server 127.127.1.0     #local clock
+    fudge 127.127.1.0  stratum 10
+</code></pre><h3 id="4、同步服务器的时间（bigdata01-hadoop-com）"><a href="#4、同步服务器的时间（bigdata01-hadoop-com）" class="headerlink" title="4、同步服务器的时间（bigdata01.hadoop.com）"></a>4、同步服务器的时间（bigdata01.hadoop.com）</h3><pre><code># ntpdate 202.108.6.95  #操作这一步时关闭ntp服务
+   23 Mar 11:36:56 ntpdate[26856]: step time server 173.255.246.13 offset -12.240613 sec
+</code></pre><h3 id="5、启动ntp服务（默认式开始）PC1-root用户操作（bigdata01-hadoop-com）"><a href="#5、启动ntp服务（默认式开始）PC1-root用户操作（bigdata01-hadoop-com）" class="headerlink" title="5、启动ntp服务（默认式开始）PC1 root用户操作（bigdata01.hadoop.com）"></a>5、启动ntp服务（默认式开始）PC1 root用户操作（bigdata01.hadoop.com）</h3><pre><code> # service ntpd start
+ # chkconfig ntpd on
+ # chkconfig --list | grep ntpd
+ ntpd            0:off   1:off   2:on    3:on    4:on    启动状态就可以了
+ # ntpdate 202.120.2.101  #测试
+9 Jun 15:27:49 ntpdate[2689]: the NTP socket is in use, exiting      
+    #表示服务器1 作为时间服务器,同步时间不可用
+    #ntpd一旦开启就不能手动同步时间
+</code></pre><h3 id="6、如果另外两台的ntp的进程开启，那么需要关闭-对其他两台进行操作"><a href="#6、如果另外两台的ntp的进程开启，那么需要关闭-对其他两台进行操作" class="headerlink" title="6、如果另外两台的ntp的进程开启，那么需要关闭(对其他两台进行操作)"></a>6、如果另外两台的ntp的进程开启，那么需要关闭(对其他两台进行操作)</h3><pre><code># service --status-all | grep ntpd  查看ntpd服务是否开启
+# chkconfig --list | grep ntpd        查看ntpd服务是否随开机启动
+
+#如果服务可能开启  执行以下命令
+# service ntpd stop
+# chkconfig ntpd off
+</code></pre><h3 id="7-第2、3台向第一台同步时间"><a href="#7-第2、3台向第一台同步时间" class="headerlink" title="7.第2、3台向第一台同步时间"></a>7.第2、3台向第一台同步时间</h3><pre><code># ntpdate bigdata01.hadoop.com
+18 Jan 23:01:34 ntpdate[2304]: step time server 192.168.239.211 offset -28768.643767 sec
+</code></pre><h3 id="8-制定周期性时间同步计划任务（PC2、PC3定时向PC1手动同步时间）"><a href="#8-制定周期性时间同步计划任务（PC2、PC3定时向PC1手动同步时间）" class="headerlink" title="8.制定周期性时间同步计划任务（PC2、PC3定时向PC1手动同步时间）"></a>8.制定周期性时间同步计划任务（PC2、PC3定时向PC1手动同步时间）</h3><pre><code>在PC2 PC3每10分钟同步一次时间
+# crontab -e
+*/10 * * * * /usr/sbin/ntpdate  bigdata01.hadoop.com
+
+[注意]：如果确实无法向第一台同步时间，请在交互窗口（可以同时设置3台时间）执行手动设置时间
+
+# date -s  &apos;2017/08/29 15:34:30&apos;
+</code></pre><h2 id="三、配置SSH免密钥登录"><a href="#三、配置SSH免密钥登录" class="headerlink" title="三、配置SSH免密钥登录"></a>三、配置SSH免密钥登录</h2><pre><code>切换为普通用户hadoop 使用普通用户操作
+使用ssh登录的时候不需要用户名密码  $ sbin/start-dfs.sh
+
+
+每个节点操作
+    $ ssh-keygen   
+    *  一直回车，生产当前主机的公钥和私钥(~/.ssh)
+
+    //分发密钥（要向3台都发送）
+     $  ssh-copy-id bigdata01.hadoop.com
+     $  ssh-copy-id bigdata02.hadoop.com
+      $  ssh-copy-id bigdata03.hadoop.com
+
+
+
+测试:
+</code></pre><p>[hadoop@bigdata01 ~]$  ssh bigdata02.hadoop.com<br>     测试失败，先删除.ssh目录，重做一遍<br>        $ rm -r ~/.ssh</p>
+<h2 id="四、安装Hadoop"><a href="#四、安装Hadoop" class="headerlink" title="四、安装Hadoop"></a>四、安装Hadoop</h2><h3 id="1-下载上传到Linux并解压hadoop的-tar-gz"><a href="#1-下载上传到Linux并解压hadoop的-tar-gz" class="headerlink" title="1.下载上传到Linux并解压hadoop的.tar.gz"></a>1.下载上传到Linux并解压hadoop的.tar.gz</h3><pre><code>$ tar -zxf hadoop-2.5.0.tar.gz -C /opt/modules/
+</code></pre><h3 id="2-删除-HADOOP-HOME-share-doc"><a href="#2-删除-HADOOP-HOME-share-doc" class="headerlink" title="2.删除${HADOOP_HOME}/share/doc"></a>2.删除${HADOOP_HOME}/share/doc</h3><pre><code>$ rm -rf doc/
+</code></pre><h3 id="3-配置java环境支持在-HADOOP-HOME-etc-hadoop"><a href="#3-配置java环境支持在-HADOOP-HOME-etc-hadoop" class="headerlink" title="3.配置java环境支持在${HADOOP_HOME}/etc/hadoop"></a>3.配置java环境支持在${HADOOP_HOME}/etc/hadoop</h3><pre><code>在hadoop-env.sh   mapred-env.sh   yarn-env.sh中配置
+
+JAVA_HOME=/opt/modules/jdk1.7.0_67
+</code></pre><h3 id="4-core-site-xml"><a href="#4-core-site-xml" class="headerlink" title="4. =======core-site.xml==="></a>4. =======core-site.xml===</h3><pre><code>&lt;!--  指定第一台作为NameNode  --&gt;
+&lt;property&gt;
+    &lt;name&gt;fs.defaultFS&lt;/name&gt;
+    &lt;value&gt;hdfs://bigdata01.hadoop.com:8020&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;property&gt;
+    &lt;name&gt;hadoop.tmp.dir&lt;/name&gt;
+    &lt;value&gt;/opt/modules/hadoop-2.5.0/data&lt;/value&gt;
+&lt;/property&gt;
+</code></pre><h3 id="5-hdfs-site-xml"><a href="#5-hdfs-site-xml" class="headerlink" title="5. ============hdfs-site.xml==========="></a>5. ============hdfs-site.xml===========</h3><pre><code>&lt;!-- 分布式副本数设置为3 --&gt;
+&lt;property&gt;
+    &lt;name&gt;dfs.replication&lt;/name&gt;
+    &lt;value&gt;3&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;!-- secondarynamenode主机名 --&gt;
+&lt;property&gt;
+    &lt;name&gt;dfs.namenode.secondary.http-address&lt;/name&gt;
+    &lt;value&gt;bigdata02.hadoop.com:50090&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;!-- namenode的web访问主机名:端口号 --&gt;
+&lt;property&gt;
+    &lt;name&gt;dfs.namenode.http-address&lt;/name&gt;
+    &lt;value&gt;bigdata01.hadoop.com:50070&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;!-- 关闭权限检查用户或用户组 --&gt;
+&lt;property&gt;
+    &lt;name&gt;dfs.permissions.enabled&lt;/name&gt;
+    &lt;value&gt;false&lt;/value&gt;
+&lt;/property&gt;
+</code></pre><h3 id="6-mapred-site-xml"><a href="#6-mapred-site-xml" class="headerlink" title="6.============mapred-site.xml============"></a>6.============mapred-site.xml============</h3><pre><code>&lt;!-- 指定mapreducer向yarn提交 --&gt;
+&lt;property&gt;
+    &lt;name&gt;mapreduce.framework.name&lt;/name&gt;
+    &lt;value&gt;yarn&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;property&gt;
+    &lt;name&gt;mapreduce.jobhistory.address&lt;/name&gt;
+    &lt;value&gt;bigdata01.hadoop.com:10020&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;property&gt;
+    &lt;name&gt;mapreduce.jobhistory.webapp.address&lt;/name&gt;
+    &lt;value&gt;bigdata01.hadoop.com:19888&lt;/value&gt;
+&lt;/property&gt;
+</code></pre><h3 id="7-yarn-site-xml"><a href="#7-yarn-site-xml" class="headerlink" title="7.==========yarn-site.xml============"></a>7.==========yarn-site.xml============</h3><pre><code>&lt;!-- 指定哪个节点作为resourcemanager --&gt;
+&lt;property&gt;
+    &lt;name&gt;yarn.resourcemanager.hostname&lt;/name&gt;
+    &lt;value&gt;bigdata03.hadoop.com&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;!-- 在mapreducer过程中启用shuffle --&gt;
+&lt;property&gt;
+    &lt;name&gt;yarn.nodemanager.aux-services&lt;/name&gt;
+    &lt;value&gt;mapreduce_shuffle&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;!-- 启用日志聚合 --&gt;
+&lt;property&gt;
+    &lt;name&gt;yarn.log-aggregation-enable&lt;/name&gt;
+    &lt;value&gt;true&lt;/value&gt;
+&lt;/property&gt;
+
+&lt;!-- 日志保存时间 --&gt;
+&lt;property&gt;
+    &lt;name&gt;yarn.log-aggregation.retain-seconds&lt;/name&gt;
+    &lt;value&gt;86400&lt;/value&gt;
+&lt;/property&gt;
+===============================
+</code></pre><h3 id="8配置slaves"><a href="#8配置slaves" class="headerlink" title="8配置slaves"></a>8配置slaves</h3><pre><code>bigdata01.hadoop.com
+bigdata02.hadoop.com
+bigdata03.hadoop.com
+</code></pre><h3 id="【注意事项】："><a href="#【注意事项】：" class="headerlink" title="【注意事项】："></a>【注意事项】：</h3><pre><code>1.slaves中配置集群中所有的主机名
+2.所有节点上的配置文件内容都是一样的
+3.要按照集群规划配置所属进程
+4.配置普通用户, 所有节点 有相同的帐号密码
+</code></pre><h2 id="四、分发-注意每个节点的权限问题：-opt-没有写权限"><a href="#四、分发-注意每个节点的权限问题：-opt-没有写权限" class="headerlink" title="四、分发(注意每个节点的权限问题： /opt/没有写权限)"></a>四、分发(注意每个节点的权限问题： /opt/没有写权限)</h2><pre><code>（bigdata01.hadoop.com）分发hadoop（已经配置好的）目录到其他两台(bigdata02和bigdata03)服务器上
+ scp -r bigdata01要复制的目录  bigdata02复制到的目录
+
+$ scp -r /opt/modules/hadoop-2.5.0/    bigdata02.hadoop.com:/opt/modules/
+$ scp -r /opt/modules/hadoop-2.5.0/ bigdata03.hadoop.com:/opt/modules/
+</code></pre><h2 id="五、格式化Namenode"><a href="#五、格式化Namenode" class="headerlink" title="五、格式化Namenode"></a>五、格式化Namenode</h2><pre><code>在namenode所在的服务器linux01上,进行格式化${HADOOP_HOME}/bin
+$ bin/hdfs namendoe -format
+</code></pre><h3 id="【注意】"><a href="#【注意】" class="headerlink" title="【注意】"></a>【注意】</h3><p>1.先将PC1的hadoop配置目录分发到PC2和PC3<br>2.保证3台上的配置内容一模一样<br>3.先确保将3台没有格式化信息<br>4.最后格式化</p>
+<h2 id="六、启动进程"><a href="#六、启动进程" class="headerlink" title="六、启动进程"></a>六、启动进程</h2><pre><code>在PC1上使用如下命令启动HDFS
+$ sbin/start-dfs.sh
+
+在PC1上使用如下命令启动YARN
+$ sbin/start-yarn.sh
+
+停止进程
+在PC1上使用如下命令停止HDFS
+$ sbin/stop-dfs.sh
+
+在PC3上使用如下命令停止YARN
+$ sbin/stop-yarn.sh
+</code></pre><p>###【注意】<br>修改任何配置文件，请先停止所有进程，然后重新启动</p>
+<h2 id="七、检查启动是否正常"><a href="#七、检查启动是否正常" class="headerlink" title="七、检查启动是否正常"></a>七、检查启动是否正常</h2><p>3台上jps查看进程，参考之前的集群规划</p>
+<p>PC1:<br>28626 DataNode<br>28883 NodeManager<br>28989 Jps<br>28531 NameNode<br>7527 ResourceManager</p>
+<p>PC2:<br>7528 DataNode<br>7826 Jps<br>7717 NodeManager<br>7583 SecondaryNameNode</p>
+<p>PC3<br>7622 NodeManager<br>7922 Jps<br>7405 DataNode</p>
+</div><div class="tags"></div><div class="post-share"><div class="bdsharebuttonbox"><span style="float:left;line-height: 28px;height: 28px;font-size:16px;font-weight:blod">分享到：</span><a href="#" data-cmd="more" class="bds_more"></a><a href="#" data-cmd="mshare" title="分享到一键分享" class="bds_mshare"></a><a href="#" data-cmd="fbook" title="分享到Facebook" class="bds_fbook"></a><a href="#" data-cmd="twi" title="分享到Twitter" class="bds_twi"></a><a href="#" data-cmd="linkedin" title="分享到linkedin" class="bds_linkedin"></a><a href="#" data-cmd="youdao" title="分享到有道云笔记" class="bds_youdao"></a><a href="#" data-cmd="evernotecn" title="分享到印象笔记" class="bds_evernotecn"></a><a href="#" data-cmd="weixin" title="分享到微信" class="bds_weixin"></a><a href="#" data-cmd="qzone" title="分享到QQ空间" class="bds_qzone"></a><a href="#" data-cmd="tsina" title="分享到新浪微博" class="bds_tsina"></a></div></div><div class="post-nav"><a href="/2017/06/06/伪分布搭建/" class="next">伪分布搭建</a></div><div id="comments"></div></div></div></div><div class="layout-r"><div id="sidebar"><div class="search-pla"></div><div id="toc" class="widget"><div class="widget-title"><i class="fa fa-fei">文章目录</i></div><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#集群规划-gt-不同的守护进程运行哪些节点"><span class="toc-number">1.</span> <span class="toc-text">集群规划  -&gt; 不同的守护进程运行哪些节点</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#一、基本环境准备"><span class="toc-number">2.</span> <span class="toc-text">一、基本环境准备</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-配置IP和DNS-映射-主机名"><span class="toc-number">2.1.</span> <span class="toc-text">1 配置IP和DNS 映射  主机名</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-关闭防火墙及安全子系统"><span class="toc-number">2.2.</span> <span class="toc-text">2 关闭防火墙及安全子系统</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-创建普通用户名并密码-配置sudo权限"><span class="toc-number">2.3.</span> <span class="toc-text">3 创建普通用户名并密码, 配置sudo权限</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#1-查看是否存在用户普通用户-没有就创建-稍后要保证3台帐号密码相同"><span class="toc-number">2.3.1.</span> <span class="toc-text">1 查看是否存在用户普通用户,没有就创建,稍后要保证3台帐号密码相同</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#2-配置hadoop的sudo权限"><span class="toc-number">2.3.2.</span> <span class="toc-text">2 配置hadoop的sudo权限</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-安装jdk"><span class="toc-number">2.4.</span> <span class="toc-text">4 安装jdk</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#1-卸载自带jdk"><span class="toc-number">2.4.1.</span> <span class="toc-text">1 卸载自带jdk</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#2-在-opt下创建并修改权限"><span class="toc-number">2.4.2.</span> <span class="toc-text">2 在/opt下创建并修改权限</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#3-安装jdk"><span class="toc-number">2.4.3.</span> <span class="toc-text">3 安装jdk</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-系统和软件【3台】如果时克隆出来的需要执行"><span class="toc-number">2.5.</span> <span class="toc-text">5 系统和软件【3台】如果时克隆出来的需要执行</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-配置主机映射-【三台都需要需要添加】"><span class="toc-number">2.6.</span> <span class="toc-text">6 配置主机映射   【三台都需要需要添加】</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-修改主机名"><span class="toc-number">2.7.</span> <span class="toc-text">7.修改主机名</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8-windows的映射-C-Windows-System32-drivers-etc-hosts"><span class="toc-number">2.8.</span> <span class="toc-text">8.windows的映射 (C:\Windows\System32\drivers\etc\hosts)</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-检查每台服务器所在的时区"><span class="toc-number">2.9.</span> <span class="toc-text">1.检查每台服务器所在的时区</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-安装ntp服务"><span class="toc-number">2.10.</span> <span class="toc-text">2.安装ntp服务</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-修改ntp的配置文件（linux01-bigdata-com为第一台服务器的主机名-修改第一台）"><span class="toc-number">2.11.</span> <span class="toc-text">3.修改ntp的配置文件（linux01.bigdata.com为第一台服务器的主机名,修改第一台）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4、同步服务器的时间（bigdata01-hadoop-com）"><span class="toc-number">2.12.</span> <span class="toc-text">4、同步服务器的时间（bigdata01.hadoop.com）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5、启动ntp服务（默认式开始）PC1-root用户操作（bigdata01-hadoop-com）"><span class="toc-number">2.13.</span> <span class="toc-text">5、启动ntp服务（默认式开始）PC1 root用户操作（bigdata01.hadoop.com）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6、如果另外两台的ntp的进程开启，那么需要关闭-对其他两台进行操作"><span class="toc-number">2.14.</span> <span class="toc-text">6、如果另外两台的ntp的进程开启，那么需要关闭(对其他两台进行操作)</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-第2、3台向第一台同步时间"><span class="toc-number">2.15.</span> <span class="toc-text">7.第2、3台向第一台同步时间</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8-制定周期性时间同步计划任务（PC2、PC3定时向PC1手动同步时间）"><span class="toc-number">2.16.</span> <span class="toc-text">8.制定周期性时间同步计划任务（PC2、PC3定时向PC1手动同步时间）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#三、配置SSH免密钥登录"><span class="toc-number">3.</span> <span class="toc-text">三、配置SSH免密钥登录</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#四、安装Hadoop"><span class="toc-number">4.</span> <span class="toc-text">四、安装Hadoop</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-下载上传到Linux并解压hadoop的-tar-gz"><span class="toc-number">4.1.</span> <span class="toc-text">1.下载上传到Linux并解压hadoop的.tar.gz</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-删除-HADOOP-HOME-share-doc"><span class="toc-number">4.2.</span> <span class="toc-text">2.删除${HADOOP_HOME}/share/doc</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-配置java环境支持在-HADOOP-HOME-etc-hadoop"><span class="toc-number">4.3.</span> <span class="toc-text">3.配置java环境支持在${HADOOP_HOME}/etc/hadoop</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-core-site-xml"><span class="toc-number">4.4.</span> <span class="toc-text">4. =======core-site.xml===</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-hdfs-site-xml"><span class="toc-number">4.5.</span> <span class="toc-text">5. ============hdfs-site.xml===========</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-mapred-site-xml"><span class="toc-number">4.6.</span> <span class="toc-text">6.============mapred-site.xml============</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-yarn-site-xml"><span class="toc-number">4.7.</span> <span class="toc-text">7.==========yarn-site.xml============</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8配置slaves"><span class="toc-number">4.8.</span> <span class="toc-text">8配置slaves</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#【注意事项】："><span class="toc-number">4.9.</span> <span class="toc-text">【注意事项】：</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#四、分发-注意每个节点的权限问题：-opt-没有写权限"><span class="toc-number">5.</span> <span class="toc-text">四、分发(注意每个节点的权限问题： /opt/没有写权限)</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#五、格式化Namenode"><span class="toc-number">6.</span> <span class="toc-text">五、格式化Namenode</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#【注意】"><span class="toc-number">6.1.</span> <span class="toc-text">【注意】</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#六、启动进程"><span class="toc-number">7.</span> <span class="toc-text">六、启动进程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#七、检查启动是否正常"><span class="toc-number">8.</span> <span class="toc-text">七、检查启动是否正常</span></a></li></ol></div><div class="widget"><div class="widget-title"><i class="fa fa-xie"> 最新文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2018/06/06/Hadoop完全分布式搭建/">Hadoop完全分布式搭建</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/06/伪分布搭建/">伪分布搭建</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/18/test-my-site-0/">GitHub+Hexo 搭建个人网站详细教程</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-gui"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/hexo博客/">hexo博客</a><span class="category-list-count">1</span></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-biao"> 标签</i></div><div class="tagcloud"><a href="/tags/hexo博客/" style="font-size: 15px;">hexo博客</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-archive"> 归档</i></div><ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/06/">六月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2017/06/">六月 2017</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2017/05/">五月 2017</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-you"> 友情链接</i></div><ul></ul><a href="https://github.com/anguszhanglu" title="github" target="_blank">github</a><ul></ul><a href="https://taohuaer.github.io/" title="小花" target="_blank">小花</a><ul></ul><a href="http://javinjunfeng.top" title="唱着远方的龟" target="_blank">唱着远方的龟</a></div></div></div></div><a id="totop" href="#top"></a><div id="footer"><div class="footer-info"><p><a href="/baidusitemap.xml">Baidu Site Haritası</a> |  <a href="/atom.xml">订阅</a> |  <a href="/about/">关于</a></p><p>本站总访问量：<i id="busuanzi_container_site_pv"><i id="busuanzi_value_site_pv"></i></i>次</p><p><span> Copyright &copy;<a href="/." rel="nofollow">zhanglu.</a></span><span> Theme by<a rel="nofollow" target="_blank" href="https://github.com/chaooo/hexo-theme-BlueLake"> BlueLake.</a></span><span> Count by<a href="http://busuanzi.ibruce.info/"> busuanzi.</a></span><span> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a></span></p></div></div></div><script src="https://dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js" async></script><script type="text/javascript" src="/js/search.json.js?v=2.0.1"></script><script type="text/javascript" src="/js/toctotop.js?v=2.0.1" async></script><script>window._bd_share_config={"common":{"bdSnsKey":{},"bdText":"","bdMini":"2","bdMiniList":["mshare","weixin","tsina","qzone","linkedin","fbook","twi","print","renren","sqq","evernotecn","bdysc","tqq","tqf","bdxc","kaixin001","tieba","douban","bdhome","thx","ibaidu","meilishuo","mogujie","diandian","huaban","duitang","hx","fx","youdao","sdo","qingbiji","people","xinhua","mail","isohu","yaolan","wealink","ty","iguba","h163","copy"],"bdPic":"","bdStyle":"1","bdSize":"16"},"share":{},"image":{"viewList":["tsina","qzone","weixin","fbook","twi","linkedin","youdao","evernotecn","mshare"],"viewText":"分享到：","viewSize":"16"},"selectShare":{"bdContainerClass":null,"bdSelectMiniList":["tsina","qzone","weixin","fbook","twi","linkedin","youdao","evernotecn","mshare"]}};with(document)0[(getElementsByTagName('head')[0]||head).appendChild(createElement('script')).src='http://bdimg.share.baidu.com/static/api/js/share.js?v=89860593.js?cdnversion='+~(-new Date()/36e5)];
+</script><script type="text/javascript" src="/js/jquery.js?v=2.0.1" async></script><script type="text/javascript" src="/js/hi.js?v=2.0.1" async></script></body></html>
